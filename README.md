@@ -9,6 +9,9 @@ Rewritten 2026-08-08 — the original was lost with the X10 Pro_A SSD; no backup
 - `list_models(host=None)` — installed models per host, or all hosts if omitted.
 - `generate(host, model, prompt, timeout_sec=120)` — send a prompt to a specific host+model, return the response.
 - `fleet_health()` — reachability, latency, and model count for every host.
+- `compare_models(prompt, targets)` — send the same prompt to multiple `{host, model}` pairs in parallel, return responses side by side.
+- `smart_generate(model, prompt, timeout_sec=120)` — routes to whichever host already has `model` loaded in memory (checks `/api/ps`), falling back to any host that has it installed. Avoids cold-load latency.
+- `pull_model(host, model, timeout_sec=900)` — pull/verify a model on a specific host.
 
 ## Hosts
 
