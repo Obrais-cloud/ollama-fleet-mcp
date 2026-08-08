@@ -36,5 +36,7 @@ uv run python main.py
 ## Register with Claude Code
 
 ```
-claude mcp add ollama-fleet -- uv run --directory ~/ollama-fleet-mcp python main.py
+claude mcp add ollama-fleet -s user -- uv run --directory ~/ollama-fleet-mcp python main.py
 ```
+
+`-s user` registers it at user scope, so it's available in every project, not just when your cwd happens to match wherever it was registered from.
