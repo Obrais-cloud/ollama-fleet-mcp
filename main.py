@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import time
 from pathlib import Path
 
@@ -8,6 +9,13 @@ from mcp.server import MCPServer
 
 HOSTS_FILE = Path(__file__).parent / "hosts.json"
 TIMEOUT = 10.0
+
+# Ollama/OCI convention: a model ref may be "[registry-host[:port]/]name[:tag]" — any
+# path segment before the last one is treated as a registry host to fetch from. /api/pull
+# would happily make the target Ollama host fetch from an attacker-chosen server if we
+# forwarded an arbitrary string here (SSRF pivot through a trusted internal service). None
+# of this fleet's real models use a namespace, so we only allow a bare "name[:tag]".
+_SAFE_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]*(?::[A-Za-z0-9][A-Za-z0-9_.\-]*)?$")
 
 mcp = MCPServer("ollama-fleet")
 
@@ -23,6 +31,16 @@ def _resolve_host(name: str) -> str:
     return hosts[name]
 
 
+def _validate_model_ref(model: str) -> str | None:
+    """Return an error message if `model` isn't a safe bare 'name[:tag]' reference, else None."""
+    if not model or not _SAFE_MODEL_RE.match(model):
+        return (
+            f"refusing '{model}': only plain 'name[:tag]' model references are allowed "
+            "(no '/', no registry host) — prevents pulling from an arbitrary registry"
+        )
+    return None
+
+
 @mcp.tool()
 async def list_models(host: str | None = None) -> dict:
     """List installed Ollama models per fleet host.
@@ -31,9 +49,9 @@ async def list_models(host: str | None = None) -> dict:
         host: optional host name (e.g. "corsair"). If omitted, lists all fleet hosts.
     """
     hosts = _load_hosts()
-    targets = {host: hosts[host]} if host else hosts
     if host and host not in hosts:
         return {"error": f"unknown host '{host}'. known hosts: {', '.join(hosts)}"}
+    targets = {host: hosts[host]} if host else hosts
 
     result: dict[str, object] = {}
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
@@ -173,6 +191,10 @@ async def pull_model(host: str, model: str, timeout_sec: float = 900.0) -> dict:
         base_url = _resolve_host(host)
     except ValueError as exc:
         return {"error": str(exc)}
+
+    validation_error = _validate_model_ref(model)
+    if validation_error:
+        return {"host": host, "model": model, "error": validation_error}
 
     async with httpx.AsyncClient(timeout=timeout_sec) as client:
         try:
